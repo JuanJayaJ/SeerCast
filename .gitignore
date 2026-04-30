@@ -1,0 +1,34 @@
+# Data — never commit raw competition files
+data/raw/*
+!data/raw/.gitkeep
+data/interim/*
+!data/interim/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+
+# Outputs
+outputs/figures/*
+!outputs/figures/.gitkeep
+outputs/reports/*
+!outputs/reports/.gitkeep
+outputs/models/*
+!outputs/models/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.env
+
+# Notebooks
+.ipynb_checkpoints/
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
