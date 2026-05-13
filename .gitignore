@@ -1,6 +1,6 @@
 # Data — never commit raw competition files
-data/raw/*
-!data/raw/.gitkeep
+dataset/*
+!dataset/.gitkeep
 data/interim/*
 !data/interim/.gitkeep
 data/processed/*

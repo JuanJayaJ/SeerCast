@@ -18,7 +18,7 @@ from pathlib import Path
 # Repo root: this file lives at <repo>/src/seercast/config.py, so go up three.
 REPO_ROOT: Path = Path(__file__).resolve().parents[2]
 DATA_DIR: Path = REPO_ROOT / "data"
-RAW_DIR: Path = DATA_DIR / "raw"
+RAW_DIR: Path = REPO_ROOT / "dataset"   # raw M5 CSVs live here; interim/processed stay under data/
 INTERIM_DIR: Path = DATA_DIR / "interim"
 PROCESSED_DIR: Path = DATA_DIR / "processed"
 OUTPUTS_DIR: Path = REPO_ROOT / "outputs"

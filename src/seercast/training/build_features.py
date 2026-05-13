@@ -29,6 +29,7 @@ import pandas as pd
 
 from seercast.config import (
     ARTIFACTS,
+    BACKTEST,
     DEFAULT_STATE_ID,
     DIRECT_HORIZONS,
     FULL_HORIZONS,
@@ -50,6 +51,7 @@ def _build_one(
     snap_state: str,
     origin_step_days: int,
     label: str,
+    must_include_origins=None,
 ) -> pd.DataFrame:
     print(f"[{label}] building supervised table for horizons {list(horizons)} ...")
     sup = build_supervised_table(
@@ -57,6 +59,7 @@ def _build_one(
         horizons=horizons,
         snap_state=snap_state,
         origin_step_days=origin_step_days,
+        must_include_origins=must_include_origins,
     )
     print(f"[{label}] built {len(sup):,} rows; validating ...")
     report = validate_supervised_table(sup, strict=True)
@@ -72,6 +75,7 @@ def run(
     *,
     snap_state: str = DEFAULT_STATE_ID,
     origin_step_days: int = 7,
+    must_include_origins=BACKTEST.origins,
     out_direct: Path | str = ARTIFACTS.train_features_ca1,
     out_full: Path | str = ARTIFACTS.train_features_ca1_full_horizon,
 ) -> dict[str, pd.DataFrame]:
@@ -89,11 +93,13 @@ def run(
     direct = _build_one(
         base, DIRECT_HORIZONS, Path(out_direct),
         snap_state=snap_state, origin_step_days=origin_step_days, label="direct",
+        must_include_origins=must_include_origins,
     )
     print()
     full = _build_one(
         base, FULL_HORIZONS, Path(out_full),
         snap_state=snap_state, origin_step_days=origin_step_days, label="full",
+        must_include_origins=must_include_origins,
     )
     return {"direct": direct, "full": full}
 

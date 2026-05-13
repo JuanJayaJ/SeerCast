@@ -68,26 +68,39 @@ class M5Raw:
 
 
 def _resolve_data_dir(data_dir: str | Path | None) -> Path:
-    """Return ``data_dir/raw`` if a project root is given, else ``raw_dir``.
+    """Return the directory that *actually* contains the raw M5 CSVs.
 
     Accepts:
-    * ``None`` → use the package default (``<repo>/data/raw``).
-    * a path that *contains* a ``raw`` subdir (e.g. the project ``data/`` dir).
-    * a path that *is* the raw dir (e.g. when files are stored elsewhere).
+    * ``None`` -> use the package default (``<repo>/dataset``).
+    * a path that *contains* a ``dataset`` subdir (e.g. the repo root) -> descended.
+    * a path that *is* the dataset dir.
+
+    Also handles the Kaggle-CLI layout where the competition zip extracts
+    into a nested ``m5-forecasting-accuracy/`` subdir: if ``calendar.csv``
+    isn't directly inside the chosen dir, descend one level into the first
+    subdir that does contain it.
     """
     if data_dir is None:
-        return RAW_DIR
-    p = Path(data_dir)
-    if (p / "raw").exists():
-        return p / "raw"
-    return p
+        chosen = RAW_DIR
+    else:
+        p = Path(data_dir)
+        chosen = p / "dataset" if (p / "dataset").exists() else p
+
+    if (chosen / CALENDAR_FILE).exists():
+        return chosen
+    # Auto-descend into the first immediate subdir that holds the CSVs.
+    if chosen.is_dir():
+        for child in sorted(chosen.iterdir()):
+            if child.is_dir() and (child / CALENDAR_FILE).exists():
+                return child
+    return chosen
 
 
 def _require(path: Path) -> Path:
     if not path.exists():
         raise FileNotFoundError(
             f"Expected M5 file not found: {path}. "
-            "Place the raw competition CSVs in data/raw/."
+            "Place the raw competition CSVs in the dataset/ folder at the repo root."
         )
     return path
 
@@ -107,7 +120,7 @@ def load_calendar(data_dir: str | Path | None = None) -> pd.DataFrame:
     Parameters
     ----------
     data_dir
-        Project ``data`` dir, the raw dir itself, or ``None`` for the default.
+        Repo root (containing ``dataset/``), the ``dataset/`` dir itself, or ``None`` for the default.
 
     Returns
     -------
@@ -175,7 +188,7 @@ def load_m5_raw(
 
     Examples
     --------
-    >>> raw = load_m5_raw("data")  # data/raw/* must exist
+    >>> raw = load_m5_raw()  # dataset/*.csv must exist
     >>> raw.calendar.shape, raw.sales.shape, raw.prices.shape  # doctest: +SKIP
     """
     return M5Raw(

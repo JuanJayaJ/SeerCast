@@ -31,7 +31,7 @@ import pandas as pd
 # --------------------------------------------------------------------------- #
 
 
-def _origin_to_date(base: pd.DataFrame, origin: int | str | pd.Timestamp) -> pd.Timestamp:
+def origin_to_date(base: pd.DataFrame, origin: int | str | pd.Timestamp) -> pd.Timestamp:
     """Coerce an origin spec to the matching ``date`` from the base table.
 
     Accepts:
@@ -153,7 +153,7 @@ def rolling_origin_backtest(
 
     all_preds: list[pd.DataFrame] = []
     for origin in origins:
-        origin_date = _origin_to_date(base, origin)
+        origin_date = origin_to_date(base, origin)
         sl = _slice_for_origin(base, origin_date, horizon_max)
 
         model = model_factory()
@@ -201,4 +201,6 @@ def rolling_origin_backtest(
     ]
 
 
-__all__ = ["rolling_origin_backtest"]
+_origin_to_date = origin_to_date  # back-compat alias for private name
+
+__all__ = ["rolling_origin_backtest", "origin_to_date"]

@@ -313,6 +313,67 @@ def test_validator_strict_raises():
     raise AssertionError("strict=True should have raised on missing target_sales")
 
 
+
+
+def test_backtest_origins_are_guaranteed_in_supervised_table():
+    """Patch contract: must_include_origins guarantees the listed backtest
+    origins land in the supervised table even when the default weekly
+    training origins skip past them.
+
+    We pass an int (M5 d-style) and a date, and confirm both end up as
+    origin_date values in the output.
+    """
+    base = _synthetic_base(n_days=200, n_items=2)
+
+    # Pick two backtest origins:
+    # (a) a d-integer that probably falls between weekly training origins,
+    # (b) an explicit date.
+    d_int = 95
+    explicit_date = base["date"].iloc[140]
+
+    sup = build_supervised_table(
+        base,
+        horizons=[1, 7, 14, 28],
+        snap_state="CA",
+        origin_step_days=14,  # sparse weekly origins so we can prove the union worked
+        must_include_origins=[d_int, explicit_date],
+    )
+
+    # Convert d_95 to its corresponding date via the same helper used internally.
+    from seercast.evaluation.backtesting import origin_to_date
+
+    d_int_date = pd.Timestamp(origin_to_date(base, d_int))
+
+    present = set(sup["origin_date"].unique())
+    assert d_int_date in present, (
+        f"d_{d_int} ({d_int_date.date()}) should appear in supervised origins "
+        f"but did not; present sample: {sorted(present)[:5]}"
+    )
+    assert pd.Timestamp(explicit_date) in present, (
+        f"explicit date {explicit_date} should appear in supervised origins"
+    )
+
+    # Sanity: each backtest origin still has all 4 horizons.
+    for o in (d_int_date, pd.Timestamp(explicit_date)):
+        n = (sup["origin_date"] == o).sum()
+        # 2 ids * 4 horizons = 8 rows per origin
+        assert n == 2 * 4, f"origin {o.date()} produced {n} rows, expected 8"
+
+
+def test_must_include_origins_string_form():
+    """origin_to_date should accept "d_N" strings as well."""
+    base = _synthetic_base(n_days=200, n_items=1)
+    sup = build_supervised_table(
+        base,
+        horizons=[1, 7],
+        snap_state="CA",
+        origin_step_days=21,
+        must_include_origins=["d_120"],
+    )
+    from seercast.evaluation.backtesting import origin_to_date
+    expected = pd.Timestamp(origin_to_date(base, "d_120"))
+    assert expected in set(sup["origin_date"].unique())
+
 if __name__ == "__main__":
     test_calendar_features_unprefixed_and_prefixed()
     test_demand_features_shape_and_lag_values()
@@ -324,4 +385,6 @@ if __name__ == "__main__":
     test_validator_clean_table_ok()
     test_validator_catches_bad_horizon_and_duplicates()
     test_validator_strict_raises()
+    test_backtest_origins_are_guaranteed_in_supervised_table()
+    test_must_include_origins_string_form()
     print("Phase 4 smoke tests: OK")
