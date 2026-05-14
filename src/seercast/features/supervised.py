@@ -43,6 +43,10 @@ from seercast.features.demand_features import (
     DEMAND_FEATURE_NAMES,
     add_demand_features,
 )
+from seercast.features.lifecycle_features import (
+    LIFECYCLE_FEATURE_NAMES,
+    add_lifecycle_features,
+)
 from seercast.features.price_features import (
     PRICE_FEATURE_NAMES,
     add_price_features,
@@ -76,16 +80,23 @@ _TARGET_CALENDAR_SUBSET: tuple[str, ...] = (
     "is_snap_day",
 )
 
+# Lifecycle columns that we also project at the target date. ``has_price``
+# is the only one that makes sense at target time -- the others are
+# origin-side state ("how mature is this product at forecast time?").
+_TARGET_LIFECYCLE_SUBSET: tuple[str, ...] = ("has_price",)
+
 ORIGIN_FEATURE_COLUMNS: tuple[str, ...] = (
     *DEMAND_FEATURE_NAMES,
     "sell_price",
     *PRICE_FEATURE_NAMES,
     *CALENDAR_FEATURE_NAMES,
+    *LIFECYCLE_FEATURE_NAMES,
 )
 
 TARGET_FEATURE_COLUMNS: tuple[str, ...] = (
     "target_sell_price",
     *(f"target_{c}" for c in _TARGET_CALENDAR_SUBSET),
+    *(f"target_{c}" for c in _TARGET_LIFECYCLE_SUBSET),
 )
 
 META_COLUMNS: tuple[str, ...] = (
@@ -159,6 +170,7 @@ def _enrich_base(base: pd.DataFrame, snap_state: str) -> pd.DataFrame:
     add_demand_features(enriched, sort=True)
     add_price_features(enriched, sort=False)
     add_calendar_features(enriched, prefix="", snap_state=snap_state)
+    add_lifecycle_features(enriched, sort=False)
     return enriched
 
 
@@ -170,7 +182,11 @@ def _build_target_features(enriched: pd.DataFrame) -> pd.DataFrame:
     the table we'll ``merge(..., how="inner")`` against to attach
     target-date known features and the label.
     """
-    keep = ["id", "date", "sales", "sell_price", *_TARGET_CALENDAR_SUBSET]
+    keep = [
+        "id", "date", "sales", "sell_price",
+        *_TARGET_CALENDAR_SUBSET,
+        *_TARGET_LIFECYCLE_SUBSET,
+    ]
     target = enriched.loc[:, keep].copy()
     rename = {
         "date": "target_date",
@@ -178,6 +194,7 @@ def _build_target_features(enriched: pd.DataFrame) -> pd.DataFrame:
         "sell_price": "target_sell_price",
     }
     rename.update({c: f"target_{c}" for c in _TARGET_CALENDAR_SUBSET})
+    rename.update({c: f"target_{c}" for c in _TARGET_LIFECYCLE_SUBSET})
     target = target.rename(columns=rename)
     return target
 
@@ -380,6 +397,13 @@ _HIGH_MISS_TOLERANCE: dict[str, float] = {
     "price_relative_to_28d_avg": 0.10,
     "sell_price": 0.10,
     "target_sell_price": 0.10,
+    # Lifecycle features: days_since_* are NaN for rows before the first
+    # event ever observed; tolerate generously since pre-launch / no-history
+    # is exactly the signal we want to surface.
+    "days_since_first_sale": 0.30,
+    "days_since_first_price": 0.30,
+    "days_since_last_sale": 0.30,
+    "days_since_last_price": 0.30,
 }
 _DEFAULT_MISS_TOLERANCE: float = 0.02
 
