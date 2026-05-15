@@ -1,4 +1,4 @@
-"""Forecasting models: baselines (Phase 3), point LightGBM (Phase 5), quantile LightGBM (Phase 6)."""
+"""Forecasting models: baselines (Phase 3), point LightGBM (Phase 5), quantile LightGBM (Phase 6), per-horizon variants."""
 
 from seercast.models.baselines import (
     Baseline,
@@ -14,6 +14,10 @@ from seercast.models.lightgbm_model import (
     LightGBMPointModel,
     NON_FEATURE_COLUMNS,
     default_feature_columns,
+)
+from seercast.models.per_horizon_lightgbm import (
+    PerHorizonLightGBMPointModel,
+    PerHorizonQuantileLightGBMModel,
 )
 from seercast.models.quantile_lightgbm import (
     DEFAULT_QUANTILE_LGB_PARAMS,
@@ -36,4 +40,6 @@ __all__ = [
     "QuantileLightGBMModel",
     "DEFAULT_QUANTILE_LGB_PARAMS",
     "quantile_column_name",
+    "PerHorizonQuantileLightGBMModel",
+    "PerHorizonLightGBMPointModel",
 ]
