@@ -16,13 +16,21 @@ Public surface:
 * :func:`breakdown` and :func:`fairness_check` — group-wise WAPE / MAE
   / RMSE / Bias on the matched grid.
 * :func:`worst_forecasters` — top-N under/over-forecasters per model.
-* :func:`feature_importance_combined` — point + quantile importance side by side.
+* :func:`feature_importance_combined` — point + quantile importance
+  side by side. Per-horizon bundles auto-detected. Emits a
+  ``RuntimeWarning`` if a bundle exists but yields no importance.
+* :func:`inspect_bundle` — ad-hoc debugger that prints the structure
+  of a joblib model bundle. Use when ``feature_importance_combined``
+  returns empty.
 """
 
 from seercast.diagnostics.combined import GRID_COLS, PRED_COLS, combined_predictions
 from seercast.diagnostics.demand_segments import SEGMENTS, classify_demand_per_origin
 from seercast.diagnostics.error_breakdown import breakdown, fairness_check
-from seercast.diagnostics.feature_importance import feature_importance_combined
+from seercast.diagnostics.feature_importance import (
+    feature_importance_combined,
+    inspect_bundle,
+)
 from seercast.diagnostics.lifecycle import is_active_at_origin, lifecycle_summary
 from seercast.diagnostics.worst_cases import worst_forecasters
 
@@ -35,6 +43,7 @@ __all__ = [
     "breakdown",
     "fairness_check",
     "feature_importance_combined",
+    "inspect_bundle",
     "is_active_at_origin",
     "lifecycle_summary",
     "worst_forecasters",

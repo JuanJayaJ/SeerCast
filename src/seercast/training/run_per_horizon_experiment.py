@@ -351,12 +351,28 @@ def run(
 
     if not quantile_predictions.empty:
         quantile_predictions.to_parquet(paths["quantile_predictions"], index=False)
-        joblib.dump(
-            {"models": quantile_bundles, "quantiles": list(quantiles),
-             "horizons": h_list, "valid_window_days": valid_window_days,
-             "backtest_origins": [d.isoformat() for d in backtest_dates]},
-            paths["quantile_models"],
-        )
+
+        if quantile_bundles:
+            joblib.dump(
+                {
+                    "models": quantile_bundles,
+                    "quantiles": list(quantiles),
+                    "horizons": h_list,
+                    "valid_window_days": valid_window_days,
+                    "backtest_origins": [d.isoformat() for d in backtest_dates],
+                },
+                paths["quantile_models"],
+            )
+        elif Path(paths["quantile_models"]).exists():
+            print(
+                "keeping existing quantile model bundle "
+                f"(no trained models in memory): {paths['quantile_models']}"
+            )
+        else:
+            print(
+                "WARN: no quantile model bundle written because no trained "
+                "models are in memory and no existing bundle was found."
+            )
         # By (origin, horizon) probabilistic scores.
         scores = score_quantile_by_group(
             quantile_predictions, by=("origin_date", "horizon"),
@@ -389,12 +405,27 @@ def run(
 
     if not point_predictions.empty:
         point_predictions.to_parquet(paths["point_predictions"], index=False)
-        joblib.dump(
-            {"models": point_bundles, "horizons": h_list,
-             "valid_window_days": valid_window_days,
-             "backtest_origins": [d.isoformat() for d in backtest_dates]},
-            paths["point_models"],
-        )
+
+        if point_bundles:
+            joblib.dump(
+                {
+                    "models": point_bundles,
+                    "horizons": h_list,
+                    "valid_window_days": valid_window_days,
+                    "backtest_origins": [d.isoformat() for d in backtest_dates],
+                },
+                paths["point_models"],
+            )
+        elif Path(paths["point_models"]).exists():
+            print(
+                "keeping existing point model bundle "
+                f"(no trained models in memory): {paths['point_models']}"
+            )
+        else:
+            print(
+                "WARN: no point model bundle written because no trained "
+                "models are in memory and no existing bundle was found."
+            )
         point_scores = score_by_group(
             point_predictions, by=("origin_date", "horizon"),
         )
