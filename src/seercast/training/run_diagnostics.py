@@ -172,6 +172,9 @@ def run(
     fi = feature_importance_combined(
         point_bundle_path=point_bundle_path,
         quantile_bundle_path=quantile_bundle_path,
+        strict=False,   # WARN instead of raise so the rest of the diagnostics
+                        # run still completes if a bundle is problematic.
+        verbose=True,
     )
     fi.to_csv(reports_dir / "feature_importance_combined.csv", index=False)
     print(f"  wrote feature_importance_combined.csv  ({len(fi):,} rows)")
