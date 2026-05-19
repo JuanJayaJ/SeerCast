@@ -215,8 +215,13 @@ def run(
     out_risk = reports_dir / "planner_risk_report_ca1.csv"
     risk.to_csv(out_risk, index=False)
 
+    # v1.2: the high-uncertainty CSV mirrors the chart's behaviour and
+    # excludes low-expected items (they show up on the low-upside CSV/chart).
     out_uncertainty = reports_dir / "top_high_uncertainty_ca1.csv"
-    top_n_by(risk, "relative_uncertainty_floored", n=top_n).to_csv(out_uncertainty, index=False)
+    uncertainty_pool = risk.loc[risk["expected_demand_p50"] >= demand_floor]
+    top_n_by(uncertainty_pool, "relative_uncertainty_floored", n=top_n).to_csv(
+        out_uncertainty, index=False,
+    )
 
     out_stockout = reports_dir / "top_stockout_attention_ca1.csv"
     top_n_by(risk, "stockout_attention_score", n=top_n).to_csv(out_stockout, index=False)
@@ -242,8 +247,12 @@ def run(
     summary.to_csv(out_summary, index=False)
 
     # 8. Plots.
+    # v1.2: high-uncertainty excludes items with p50 < demand_floor by default
+    # (those belong on the low-expected/high-upside chart instead).
     plot_top_high_uncertainty(
         risk, n=top_n,
+        demand_floor=demand_floor,
+        include_low_expected=False,
         savepath=figures_dir / "top_high_uncertainty_products.png",
     )
     plot_top_stockout_attention(
@@ -259,12 +268,16 @@ def run(
         p50_threshold=low_expected_p50, p90_threshold=low_expected_p90,
         savepath=figures_dir / "top_low_expected_high_upside_products.png",
     )
+    # v1.2: example plot uses risk_df so the auto-selected id is a
+    # planner-meaningful stockout-attention candidate.
     plot_item_planning_demand_example(
         quantile_predictions,
+        risk_df=risk,
         savepath=figures_dir / "item_planning_demand_example.png",
     )
     plot_planner_dashboard(
         risk, quantile_predictions, n=min(12, top_n),
+        demand_floor=demand_floor,
         savepath=figures_dir / "planner_dashboard_ca1.png",
     )
     plt.close("all")
@@ -275,17 +288,30 @@ def run(
     print("=" * 60)
     print(summary.iloc[0].to_string())
     print()
-    print(f"Ratio metrics use demand_floor={demand_floor:g} to avoid misleading "
-          "huge percentages when p50 is near zero.")
+    print(
+        f"Ratio metrics use demand_floor={demand_floor:g} to avoid misleading "
+        f"huge percentages when p50 is near zero. (v1.2)\n"
+        f"High-uncertainty leaderboard EXCLUDES items with "
+        f"expected_demand_p50 < {demand_floor:g} (low-expected/high-upside "
+        f"products are reported separately).\n"
+        f"Planning example item is selected from meaningful stockout-attention "
+        f"candidates (p50 ≥ 50 AND risk_buffer ≥ 50) where possible."
+    )
+    # v1.2: each leaderboard pulls from the SAME pool its CSV was written
+    # from. The uncertainty leaderboard pool excludes low-expected items
+    # (they belong on the separate low-expected/high-upside leaderboard).
     leaderboards = [
-        ("top 10 by high uncertainty (floored)",        "relative_uncertainty_floored",  False, "uncertainty_label"),
-        ("top 10 by stockout attention score",          "stockout_attention_score",      False, "stockout_attention_label"),
-        ("top 10 by scenario attention score",          "scenario_attention_score",      False, "scenario_sensitivity_label"),
+        ("top 10 by high uncertainty (floored, p50 ≥ {0:g})".format(demand_floor),
+         uncertainty_pool, "relative_uncertainty_floored",  False, "uncertainty_label"),
+        ("top 10 by stockout attention score",
+         risk,             "stockout_attention_score",      False, "stockout_attention_label"),
+        ("top 10 by scenario attention score",
+         risk,             "scenario_attention_score",      False, "scenario_sensitivity_label"),
     ]
-    for title, metric, ascending, label_col in leaderboards:
+    for title, pool, metric, ascending, label_col in leaderboards:
         print()
         print(title + ":")
-        top = top_n_by(risk, metric, n=10, ascending=ascending)
+        top = top_n_by(pool, metric, n=10, ascending=ascending)
         if top.empty:
             print(f"  (no rows for {metric})")
             continue

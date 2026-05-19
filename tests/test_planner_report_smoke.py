@@ -578,6 +578,236 @@ def test_run_end_to_end_handles_missing_scenarios():
             assert (reports_dir / name).exists()
 
 
+
+
+# --------------------------------------------------------------------------- #
+# 9. v1.2: example selector prefers planner-meaningful items
+# --------------------------------------------------------------------------- #
+
+
+def test_select_example_id_prefers_meaningful_demand_item():
+    """Given a risk_df with one near-zero item and one high-volume item,
+    the selector must pick the high-volume one (v1.2 fix for the bad
+    auto-selection)."""
+    from seercast.visualization.planner_plots import _select_example_id
+
+    risk_df = pd.DataFrame([
+        {
+            "id": "near_zero_item",
+            "expected_demand_p50": 0.0,
+            "risk_buffer": 3.0,
+            "stockout_attention_score": 0.0,
+            "conservative_demand_p90": 3.0,
+        },
+        {
+            "id": "high_volume_item",
+            "expected_demand_p50": 320.0,
+            "risk_buffer": 200.0,
+            "stockout_attention_score": 200.0 * np.log1p(320.0),
+            "conservative_demand_p90": 520.0,
+        },
+    ])
+    # quantile_predictions doesn't need to match -- the selector uses risk_df.
+    q = pd.DataFrame({
+        "id": ["high_volume_item", "high_volume_item"],
+        "p10": [70.0, 80.0], "p50": [80.0, 100.0], "p90": [120.0, 140.0],
+        "horizon": [1, 7],
+    })
+    chosen = _select_example_id(q, risk_df=risk_df)
+    assert chosen == "high_volume_item"
+
+
+def test_select_example_id_falls_back_when_no_meaningful_item():
+    """If nothing meets p50≥50 AND buffer≥50, fall back to highest
+    stockout_attention_score among non-zero p50 items."""
+    from seercast.visualization.planner_plots import _select_example_id
+
+    risk_df = pd.DataFrame([
+        {"id": "a", "expected_demand_p50": 2.0, "risk_buffer": 1.0,
+         "stockout_attention_score": 1.0 * np.log1p(2.0),
+         "conservative_demand_p90": 3.0},
+        {"id": "b", "expected_demand_p50": 8.0, "risk_buffer": 4.0,
+         "stockout_attention_score": 4.0 * np.log1p(8.0),
+         "conservative_demand_p90": 12.0},
+    ])
+    q = pd.DataFrame({"id": ["b"], "p10": [4.0], "p50": [8.0], "p90": [12.0],
+                      "horizon": [1]})
+    # Neither passes the p50_min/buffer_min thresholds; fallback should pick
+    # 'b' because it has the higher stockout_attention_score.
+    assert _select_example_id(q, risk_df=risk_df) == "b"
+
+
+def test_select_example_id_back_compat_without_risk_df():
+    """Old call path (no risk_df) still works."""
+    from seercast.visualization.planner_plots import _select_example_id
+
+    q = _make_quantile_predictions(n_ids=6)
+    chosen = _select_example_id(q)
+    assert chosen is not None
+    assert chosen in q["id"].unique()
+
+
+# --------------------------------------------------------------------------- #
+# 10. v1.2: high-uncertainty excludes low-expected by default
+# --------------------------------------------------------------------------- #
+
+
+def test_plot_top_high_uncertainty_excludes_low_expected_by_default():
+    """A frame with both a low-expected item and a meaningful-demand item
+    must have only the meaningful-demand one in the rendered chart by
+    default."""
+    risk = pd.DataFrame([
+        {"id": "low_expected", "expected_demand_p50": 1.0,
+         "relative_uncertainty_floored": 1.2},
+        {"id": "meaningful", "expected_demand_p50": 100.0,
+         "relative_uncertainty_floored": 0.5},
+    ])
+    with tempfile.TemporaryDirectory() as td:
+        out = Path(td) / "u.png"
+        ax = plot_top_high_uncertainty(
+            risk, n=5, demand_floor=10.0, include_low_expected=False, savepath=out,
+        )
+    # Reading back the rendered y-tick labels is the cleanest way to verify
+    # which ids made it onto the chart.
+    rendered_ids = [t.get_text() for t in ax.get_yticklabels()]
+    assert "meaningful" in rendered_ids
+    assert "low_expected" not in rendered_ids
+    plt.close("all")
+
+
+def test_plot_top_high_uncertainty_include_low_expected_restores_full_list():
+    """``include_low_expected=True`` brings back the v1.1 behaviour."""
+    risk = pd.DataFrame([
+        {"id": "low_expected", "expected_demand_p50": 1.0,
+         "relative_uncertainty_floored": 1.2},
+        {"id": "meaningful", "expected_demand_p50": 100.0,
+         "relative_uncertainty_floored": 0.5},
+    ])
+    with tempfile.TemporaryDirectory() as td:
+        out = Path(td) / "u2.png"
+        ax = plot_top_high_uncertainty(
+            risk, n=5, demand_floor=10.0, include_low_expected=True, savepath=out,
+        )
+    rendered_ids = [t.get_text() for t in ax.get_yticklabels()]
+    assert set(rendered_ids) == {"low_expected", "meaningful"}
+    plt.close("all")
+
+
+def test_plot_top_high_uncertainty_empty_after_filter_renders_message():
+    """If every product fails the demand_floor threshold, the plot draws
+    the empty-message panel instead of crashing."""
+    risk = pd.DataFrame([
+        {"id": "tiny", "expected_demand_p50": 0.0,
+         "relative_uncertainty_floored": 1.2},
+    ])
+    with tempfile.TemporaryDirectory() as td:
+        out = Path(td) / "uempty.png"
+        plot_top_high_uncertainty(
+            risk, n=5, demand_floor=10.0, include_low_expected=False, savepath=out,
+        )
+        assert out.exists() and out.stat().st_size > 0
+    plt.close("all")
+
+
+# --------------------------------------------------------------------------- #
+# 11. v1.2: dashboard with single global footer renders cleanly
+# --------------------------------------------------------------------------- #
+
+
+def test_plot_planner_dashboard_uses_single_global_footer():
+    """The dashboard must render to a PNG without crashing. The single
+    footer is rendered via ``fig.text``; we verify it exists exactly once
+    in the figure's text artists list (not duplicated per subplot)."""
+    risk, q = _build_risk_for_plots()
+    with tempfile.TemporaryDirectory() as td:
+        out = Path(td) / "dash.png"
+        fig = plot_planner_dashboard(risk, q, n=5, savepath=out)
+        assert out.exists() and out.stat().st_size > 0
+        # The shared footer string mentions "predictive, not causal".
+        footer_texts = [t.get_text() for t in fig.texts]
+        matched = [
+            txt for txt in footer_texts
+            if "predictive, not causal" in txt
+            and "Ratio metrics use a demand floor" in txt
+        ]
+        assert len(matched) == 1, (
+            f"expected exactly one global dashboard footer; got {len(matched)} "
+            f"matching texts:\n{footer_texts}"
+        )
+    plt.close("all")
+
+
+# --------------------------------------------------------------------------- #
+# 12. v1.2: CLI end-to-end still produces all CSVs/PNGs + uses smart example
+# --------------------------------------------------------------------------- #
+
+
+def test_run_end_to_end_uses_meaningful_example_when_available():
+    """End-to-end CLI on synthetic input with one zero-p50 item AND a
+    real high-volume item: the example PNG must NOT be the zero-p50
+    item -- v1.2 fix. We check by re-using the selector on the produced
+    risk frame and verifying the id is meaningful."""
+    q = pd.concat(
+        [_make_quantile_predictions(n_ids=15), _frame_with_zero_p50_product()],
+        ignore_index=True,
+    )
+    s = _make_scenarios(q)
+
+    with tempfile.TemporaryDirectory() as td:
+        td = Path(td)
+        q_path = td / "quantile_preds.parquet"
+        s_path = td / "scenarios.parquet"
+        q.to_parquet(q_path, index=False)
+        s.to_parquet(s_path, index=False)
+
+        reports_dir = td / "reports"
+        figures_dir = td / "figures"
+
+        result = gpr.run(
+            quantile_predictions_path=q_path,
+            scenario_forecasts_path=s_path,
+            base_table_path=td / "no_such_base.parquet",
+            reports_dir=reports_dir,
+            figures_dir=figures_dir,
+            top_n=5,
+            demand_floor=10.0,
+        )
+
+        # All six CSVs + six PNGs (v1.1 set is unchanged in count).
+        for name in (
+            "planner_risk_report_ca1.csv",
+            "top_high_uncertainty_ca1.csv",
+            "top_stockout_attention_ca1.csv",
+            "top_scenario_sensitive_ca1.csv",
+            "top_low_expected_high_upside_ca1.csv",
+            "planner_summary_ca1.csv",
+        ):
+            assert (reports_dir / name).exists()
+        for name in (
+            "top_high_uncertainty_products.png",
+            "top_stockout_attention_products.png",
+            "top_scenario_sensitive_products.png",
+            "top_low_expected_high_upside_products.png",
+            "item_planning_demand_example.png",
+            "planner_dashboard_ca1.png",
+        ):
+            assert (figures_dir / name).exists()
+
+        # v1.2 invariant: the example id is NOT the zero_expected_item.
+        from seercast.visualization.planner_plots import _select_example_id
+        risk = result["risk_report"]
+        example_id = _select_example_id(q, risk_df=risk)
+        assert example_id != "zero_expected_item", (
+            f"v1.2 selector should not pick the zero-p50 item; got {example_id}"
+        )
+
+        # And the high-uncertainty CSV must NOT contain the zero-p50 item
+        # in its rows (low_expected filtered out by default).
+        hu = pd.read_csv(reports_dir / "top_high_uncertainty_ca1.csv")
+        if not hu.empty:
+            assert "zero_expected_item" not in hu["id"].astype(str).values
+
+
 if __name__ == "__main__":
     test_zero_p50_does_not_blow_up_floored_ratio()
     test_demand_floor_parameter_is_applied()
@@ -604,4 +834,12 @@ if __name__ == "__main__":
     test_resolve_quantile_predictions_missing_explicit_raises()
     test_run_end_to_end_writes_all_v1_1_csvs()
     test_run_end_to_end_handles_missing_scenarios()
-    print("Planner report v1.1 smoke tests: OK")
+    test_select_example_id_prefers_meaningful_demand_item()
+    test_select_example_id_falls_back_when_no_meaningful_item()
+    test_select_example_id_back_compat_without_risk_df()
+    test_plot_top_high_uncertainty_excludes_low_expected_by_default()
+    test_plot_top_high_uncertainty_include_low_expected_restores_full_list()
+    test_plot_top_high_uncertainty_empty_after_filter_renders_message()
+    test_plot_planner_dashboard_uses_single_global_footer()
+    test_run_end_to_end_uses_meaningful_example_when_available()
+    print("Planner report v1.2 smoke tests: OK")
